@@ -87,3 +87,19 @@ export interface ServerHistoryStateAllPrintStatusEntry {
         borderRadius: number
     }
 }
+
+export type HistoryStatsValueNames = 'jobs' | 'filament' | 'time'
+
+export interface HistoryListPanelCol {
+    text: string
+    value: string
+    align: string
+    configable: boolean
+    visible: boolean
+    filterable?: boolean
+    outputType?: string
+}
+
+export interface ServerHistoryStateJobWithCount extends ServerHistoryStateJob {
+    count: number
+}

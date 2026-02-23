@@ -3,7 +3,8 @@ import { ActionTree } from 'vuex'
 import { GuiState, GuiStateLayoutoption } from '@/store/gui/types'
 import { RootState } from '@/store/types'
 import { getDefaultState } from './index'
-import { themeDir } from '@/store/variables'
+import { excludeKeys, themeDir } from '@/store/variables'
+import { deletePath } from '@/plugins/helpers'
 
 export const actions: ActionTree<GuiState, RootState> = {
     reset({ commit, dispatch }) {
@@ -173,16 +174,13 @@ export const actions: ActionTree<GuiState, RootState> = {
 
     saveSetting({ commit }, payload) {
         commit('saveSetting', payload)
+        if (excludeKeys.includes(payload.name)) return
 
         Vue.$socket.emit('server.database.post_item', {
             namespace: 'mainsail',
             key: payload.name,
             value: payload.value,
         })
-    },
-
-    saveSettingWithoutUpload({ commit }, payload) {
-        commit('saveSetting', payload)
     },
 
     updateSettings(_, payload) {
@@ -316,6 +314,12 @@ export const actions: ActionTree<GuiState, RootState> = {
                 if (objects?.result?.value) backup[key] = { ...objects?.result?.value }
             } else if (key in mainsailDb) {
                 backup[key] = { ...mainsailDb[key] }
+
+                excludeKeys
+                    .filter((excludeKey) => excludeKey.startsWith(key + '.'))
+                    .forEach((excludeKey) => {
+                        deletePath(backup[key], excludeKey.substring(key.length + 1))
+                    })
             }
         }
 
@@ -397,18 +401,19 @@ export const actions: ActionTree<GuiState, RootState> = {
         })
     },
 
-    hideStatusInHistoryList({ commit, dispatch, state }, name) {
+    toggleStatusInHistoryList({ commit, dispatch, state }, name) {
         const array: string[] = [...state.view.history.hidePrintStatus]
+        const index = array.indexOf(name)
 
-        if (!array.includes(name)) {
-            array.push(name)
-            commit('setHistoryHidePrintStatus', array)
+        if (index === -1) array.push(name)
+        else array.splice(index, 1)
 
-            dispatch('updateSettings', {
-                keyName: 'view.history.hidePrintStatus',
-                newVal: array,
-            })
-        }
+        commit('setHistoryHidePrintStatus', array)
+
+        dispatch('updateSettings', {
+            keyName: 'view.history.hidePrintStatus',
+            newVal: array,
+        })
     },
 
     saveExpandPanel({ commit, dispatch, state }, payload) {
@@ -419,21 +424,6 @@ export const actions: ActionTree<GuiState, RootState> = {
             keyName: `dashboard.nonExpandPanels.${payload.viewport}`,
             newVal: state.dashboard.nonExpandPanels[payload.viewport],
         })
-    },
-
-    showStatusInHistoryList({ commit, dispatch, state }, name) {
-        const array: string[] = [...state.view.history.hidePrintStatus]
-
-        const index = array.indexOf(name)
-        if (index !== -1) {
-            array.splice(index, 1)
-            commit('setHistoryHidePrintStatus', array)
-
-            dispatch('updateSettings', {
-                keyName: 'view.history.hidePrintStatus',
-                newVal: array,
-            })
-        }
     },
 
     resetLayout({ dispatch }, name) {

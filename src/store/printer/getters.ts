@@ -7,10 +7,10 @@ import {
     PrinterStateFan,
     PrinterStateFilamentSensors,
     PrinterStateMiscellaneous,
+    PrinterStateMiscellaneousSensor,
     PrinterStateMcu,
     PrinterStateMacro,
     PrinterGetterObject,
-    PrinterStateLight,
 } from '@/store/printer/types'
 import { caseInsensitiveSort, formatFrequency, getMacroParams } from '@/plugins/helpers'
 import { RootState } from '@/store/types'
@@ -214,86 +214,6 @@ export const getters: GetterTree<PrinterState, RootState> = {
         })
     },
 
-    getLights: (state, getters) => {
-        const lights: PrinterStateLight[] = []
-        const supportedObjects = ['dotstar', 'led', 'neopixel', 'pca9533', 'pca9632']
-        const objects = getters.getPrinterObjects(supportedObjects)
-
-        objects
-            .filter((object: PrinterGetterObject) => {
-                return !object.name.startsWith('_')
-            })
-            .forEach((object: PrinterGetterObject) => {
-                let colorOrder = 'RGB'
-                let singleChannelTarget = null
-                const colorData = object.state.color_data ?? []
-
-                if ('color_order' in object.settings) colorOrder = object.settings.color_order[0] ?? ''
-
-                if (object.type === 'led') {
-                    colorOrder = ''
-                    if ('red_pin' in object.config) colorOrder += 'R'
-                    if ('green_pin' in object.config) colorOrder += 'G'
-                    if ('blue_pin' in object.config) colorOrder += 'B'
-                    if ('white_pin' in object.config) colorOrder += 'W'
-                }
-
-                let initialRed = object.settings.initial_red ?? null
-                if (!('initial_red' in object.config)) initialRed = null
-
-                let initialGreen = object.settings.initial_green ?? null
-                if (!('initial_green' in object.config)) initialGreen = null
-
-                let initialBlue = object.settings.initial_blue ?? null
-                if (!('initial_blue' in object.config)) initialBlue = null
-
-                let initialWhite = object.settings.initial_white ?? null
-                if (!('initial_white' in object.config)) initialWhite = null
-
-                if (object.type === 'led' && colorOrder.length === 1) {
-                    const firstColorData = colorData[0] ?? []
-
-                    switch (colorOrder) {
-                        case 'R':
-                            singleChannelTarget = firstColorData[0] ?? 0
-                            break
-                        case 'G':
-                            singleChannelTarget = firstColorData[1] ?? 0
-                            break
-                        case 'B':
-                            singleChannelTarget = firstColorData[2] ?? 0
-                            break
-                        case 'W':
-                            singleChannelTarget = firstColorData[3] ?? 0
-                            break
-                    }
-                }
-
-                lights.push({
-                    name: object.name,
-                    type: object.type as PrinterStateLight['type'],
-                    chainCount: object.settings.chain_count ?? 1,
-                    colorOrder,
-                    initialRed,
-                    initialGreen,
-                    initialBlue,
-                    initialWhite,
-                    colorData,
-                    singleChannelTarget,
-                })
-            })
-
-        return lights.sort((a, b) => {
-            const nameA = a.name.toUpperCase()
-            const nameB = b.name.toUpperCase()
-
-            if (nameA < nameB) return -1
-            if (nameA > nameB) return 1
-
-            return 0
-        })
-    },
-
     getMiscellaneous: (state) => {
         const output: PrinterStateMiscellaneous[] = []
         const supportedObjects = [
@@ -379,6 +299,37 @@ export const getters: GetterTree<PrinterState, RootState> = {
         })
     },
 
+    getMiscellaneousSensors: (state) => {
+        const output: PrinterStateMiscellaneousSensor[] = []
+        const supportedObjects = ['load_cell']
+
+        for (const [key, value] of Object.entries(state)) {
+            const nameSplit = key.split(' ')
+
+            if (!supportedObjects.includes(nameSplit[0])) continue
+            const name = nameSplit.length > 1 ? nameSplit[1] : nameSplit[0]
+            if (name.startsWith('_')) continue
+
+            const basis = {
+                name: name,
+                type: nameSplit[0],
+                value: 'value' in value ? value.value : null,
+                unit: 'unit' in value ? value.unit : '',
+            }
+            if (nameSplit[0] == 'load_cell') {
+                output.push({
+                    ...basis,
+                    value: value.force_g ?? NaN,
+                    unit: 'g',
+                })
+            } else {
+                output.push(basis)
+            }
+        }
+
+        return caseInsensitiveSort(output, 'type', 'unit', 'name')
+    },
+
     getAvailableHeaters: (state) => {
         return state.heaters?.available_heaters ?? []
     },
@@ -392,7 +343,7 @@ export const getters: GetterTree<PrinterState, RootState> = {
     },
 
     getFilamentSensors: (state) => {
-        const sensorObjectNames = ['filament_switch_sensor', 'filament_motion_sensor']
+        const sensorObjectNames = ['filament_switch_sensor', 'filament_motion_sensor', 'hall_filament_width_sensor']
         const sensors: PrinterStateFilamentSensors[] = []
 
         for (const [key, value] of Object.entries(state)) {
@@ -400,9 +351,11 @@ export const getters: GetterTree<PrinterState, RootState> = {
 
             if (sensorObjectNames.includes(nameSplit[0])) {
                 sensors.push({
-                    name: nameSplit[1],
+                    type: nameSplit[0],
+                    name: nameSplit[1] ?? nameSplit[0],
                     enabled: value.enabled,
                     filament_detected: value.filament_detected,
+                    filament_diameter: value.Diameter,
                 })
             }
         }
@@ -740,23 +693,30 @@ export const getters: GetterTree<PrinterState, RootState> = {
     getEstimatedTimeETAFormat: (state, getters, rootState, rootGetters) => {
         const hours12Format = rootGetters['gui/getHours12Format'] ?? false
         const eta = getters['getEstimatedTimeETA']
-        if (eta === 0) return '--'
 
-        const date = new Date(eta)
-        let am = true
-        let h: string | number = date.getHours()
+        const now = new Date()
+        const etaDate = new Date(eta)
+        if (etaDate <= now) return '--'
 
-        if (hours12Format && h > 11) am = false
-        if (hours12Format && h > 12) h -= 12
-        if (hours12Format && h == 0) h += 12
-        if (h < 10) h = '0' + h
+        const hours = etaDate.getHours()
+        const minutes = etaDate.getMinutes()
 
-        const m = date.getMinutes() >= 10 ? date.getMinutes() : '0' + date.getMinutes()
+        let displayHour = hours
+        let amPm = ''
 
-        const diff = eta - new Date().getTime()
-        let output = h + ':' + m
-        if (hours12Format) output += ` ${am ? 'AM' : 'PM'}`
-        if (diff > 60 * 60 * 24 * 1000) output += `+${Math.trunc(diff / (60 * 60 * 24 * 1000))}`
+        if (hours12Format) {
+            amPm = hours >= 12 ? ' PM' : ' AM'
+            displayHour = hours % 12 || 12
+        }
+
+        const output = `${String(displayHour).padStart(2, '0')}:${String(minutes).padStart(2, '0')}${amPm}`
+
+        const MS_PER_DAY = 86_400_000
+        now.setHours(0, 0, 0, 0)
+        etaDate.setHours(0, 0, 0, 0)
+        const dayDiff = Math.round((etaDate.getTime() - now.getTime()) / MS_PER_DAY)
+
+        if (dayDiff > 0) return `${output} +${dayDiff}`
 
         return output
     },
@@ -774,9 +734,19 @@ export const getters: GetterTree<PrinterState, RootState> = {
     },
 
     existsZtilt: (state) => {
-        if (!state.configfile?.settings) return false
+        // check for new Klipper gcode.commands for Z_TILT_ADJUST command
+        const commands = state.gcode?.commands ?? null
+        if (commands) {
+            return 'Z_TILT_ADJUST' in commands
+        }
 
-        return 'z_tilt' in state.configfile.settings
+        // fallback for older Klipper versions
+        const settings = state.configfile?.settings ?? null
+        if (settings) {
+            return 'z_tilt' in settings
+        }
+
+        return false
     },
 
     existsBedTilt: (state) => {

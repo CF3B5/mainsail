@@ -14,15 +14,19 @@
                         dense />
                 </v-col>
                 <v-col class="offset-4 col-4 d-flex align-center justify-end">
-                    <template v-if="selectedJobs.length">
-                        <v-btn
-                            :title="$t('History.Delete')"
-                            color="error"
-                            class="px-2 minwidth-0 ml-3"
-                            @click="deleteSelectedDialog = true">
-                            <v-icon>{{ mdiDelete }}</v-icon>
-                        </v-btn>
-                    </template>
+                    <v-tooltip v-if="selectedJobsTable.length" top>
+                        <template #activator="{ on, attrs }">
+                            <v-btn
+                                color="error"
+                                class="px-2 minwidth-0 ml-3"
+                                v-bind="attrs"
+                                v-on="on"
+                                @click="deleteSelectedDialog = true">
+                                <v-icon>{{ mdiDelete }}</v-icon>
+                            </v-btn>
+                        </template>
+                        <span>{{ $t('Buttons.Delete') }}</span>
+                    </v-tooltip>
                     <v-tooltip top>
                         <template #activator="{ on, attrs }">
                             <v-btn
@@ -58,9 +62,14 @@
                     </v-tooltip>
                     <v-menu :offset-y="true" :close-on-content-click="false">
                         <template #activator="{ on, attrs }">
-                            <v-btn class="px-2 minwidth-0 ml-3" v-bind="attrs" v-on="on">
-                                <v-icon>{{ mdiCog }}</v-icon>
-                            </v-btn>
+                            <v-tooltip top>
+                                <template #activator="{ on: onToolTip }">
+                                    <v-btn class="px-2 minwidth-0 ml-3" v-bind="attrs" v-on="{ ...on, ...onToolTip }">
+                                        <v-icon>{{ mdiCog }}</v-icon>
+                                    </v-btn>
+                                </template>
+                                <span>{{ $t('History.Settings') }}</span>
+                            </v-tooltip>
                         </template>
                         <v-list>
                             <v-list-item class="minHeight36">
@@ -80,11 +89,8 @@
                                     @change="showPrintJobs = !showPrintJobs" />
                             </v-list-item>
                             <v-divider />
-                            <template v-if="allPrintStatusArray.length">
-                                <v-list-item
-                                    v-for="status of allPrintStatusArray"
-                                    :key="status.key"
-                                    class="minHeight36">
+                            <template v-if="printStatusArray.length">
+                                <v-list-item v-for="status of printStatusArray" :key="status.name" class="minHeight36">
                                     <v-checkbox
                                         class="mt-0"
                                         hide-details
@@ -112,7 +118,7 @@
         </v-card-text>
         <v-divider class="mb-3" />
         <v-data-table
-            v-model="selectedJobs"
+            v-model="selectedJobsTable"
             :items="entries"
             class="history-jobs-table"
             :headers="filteredHeaders"
@@ -151,15 +157,21 @@
                     @select="select" />
             </template>
         </v-data-table>
-        <history-list-panel-delete-selected-dialog :show="deleteSelectedDialog" @close="deleteSelectedDialog = false" />
-        <history-list-panel-add-maintenance :show="addMaintenanceDialog" @close="addMaintenanceDialog = false" />
+        <confirmation-dialog
+            v-model="deleteSelectedDialog"
+            :title="$t('History.Delete')"
+            :text="deleteSelectedQuestion"
+            :action-button-text="$t('Buttons.Delete')"
+            :icon="mdiDelete"
+            @action="deleteSelectedJobs" />
+        <history-list-panel-add-maintenance v-model="addMaintenanceDialog" />
     </panel>
 </template>
 
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import BaseMixin from '@/components/mixins/base'
-import { HistoryListRowJob, ServerHistoryStateJob } from '@/store/server/history/types'
+import { HistoryListPanelCol, HistoryListRowJob, ServerHistoryStateJob } from '@/store/server/history/types'
 import { caseInsensitiveSort, formatFilesize } from '@/plugins/helpers'
 import Panel from '@/components/ui/Panel.vue'
 import {
@@ -177,24 +189,15 @@ import HistoryListEntryJob from '@/components/panels/History/HistoryListEntryJob
 import HistoryListPanelAddMaintenance from '@/components/dialogs/HistoryListPanelAddMaintenance.vue'
 import { GuiMaintenanceStateEntry, HistoryListRowMaintenance } from '@/store/gui/maintenance/types'
 import HistoryListEntryMaintenance from '@/components/panels/History/HistoryListEntryMaintenance.vue'
-import HistoryListPanelDeleteSelectedDialog from '@/components/dialogs/HistoryListPanelDeleteSelectedDialog.vue'
+import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
 import HistoryMixin from '@/components/mixins/history'
+import HistoryStatsMixin from '@/components/mixins/historyStats'
 
 export type HistoryListPanelRow = HistoryListRowJob | HistoryListRowMaintenance
 
-export interface HistoryListPanelCol {
-    text: string
-    value: string
-    align: string
-    configable: boolean
-    visible: boolean
-    filterable?: boolean
-    outputType?: string
-}
-
 @Component({
     components: {
-        HistoryListPanelDeleteSelectedDialog,
+        ConfirmationDialog,
         HistoryListEntryMaintenance,
         HistoryListPanelAddMaintenance,
         HistoryListEntryJob,
@@ -202,7 +205,7 @@ export interface HistoryListPanelCol {
         Panel,
     },
 })
-export default class HistoryListPanel extends Mixins(BaseMixin, HistoryMixin) {
+export default class HistoryListPanel extends Mixins(BaseMixin, HistoryMixin, HistoryStatsMixin) {
     mdiCloseThick = mdiCloseThick
     mdiCog = mdiCog
     mdiDatabaseArrowDownOutline = mdiDatabaseArrowDownOutline
@@ -223,10 +226,6 @@ export default class HistoryListPanel extends Mixins(BaseMixin, HistoryMixin) {
 
     get allLoaded() {
         return this.$store.state.server.history.all_loaded ?? false
-    }
-
-    get jobs() {
-        return this.$store.getters['server/history/getFilteredJobList'] ?? []
     }
 
     get maintenanceEntries() {
@@ -254,14 +253,6 @@ export default class HistoryListPanel extends Mixins(BaseMixin, HistoryMixin) {
         }
 
         return entries
-    }
-
-    get selectedJobs() {
-        return this.$store.state.gui.view.history.selectedJobs ?? []
-    }
-
-    set selectedJobs(newVal) {
-        this.$store.dispatch('gui/saveSettingWithoutUpload', { name: 'view.history.selectedJobs', value: newVal })
     }
 
     get headers() {
@@ -450,7 +441,7 @@ export default class HistoryListPanel extends Mixins(BaseMixin, HistoryMixin) {
     }
 
     get countPerPage() {
-        return this.$store.state.gui.view.historycountPerPage
+        return this.$store.state.gui.view.history.countPerPage ?? 10
     }
 
     set countPerPage(newVal) {
@@ -458,7 +449,7 @@ export default class HistoryListPanel extends Mixins(BaseMixin, HistoryMixin) {
     }
 
     get hideColums() {
-        return this.$store.state.gui.view.history.hideColums
+        return this.$store.state.gui.view.history.hideColums ?? []
     }
 
     set hideColums(newVal) {
@@ -482,6 +473,14 @@ export default class HistoryListPanel extends Mixins(BaseMixin, HistoryMixin) {
 
     set showPrintJobs(newVal) {
         this.$store.dispatch('gui/saveSetting', { name: 'view.history.showPrintJobs', value: newVal })
+    }
+
+    get selectedJobsTable() {
+        return this.$store.state.gui.view.history.selectedJobs ?? []
+    }
+
+    set selectedJobsTable(newVal) {
+        this.$store.dispatch('gui/saveSetting', { name: 'view.history.selectedJobs', value: newVal })
     }
 
     refreshHistory() {
@@ -534,12 +533,7 @@ export default class HistoryListPanel extends Mixins(BaseMixin, HistoryMixin) {
     }
 
     changeStatusVisible(status: any) {
-        if (status.showInTable) {
-            this.$store.dispatch('gui/hideStatusInHistoryList', status.name)
-            return
-        }
-
-        this.$store.dispatch('gui/showStatusInHistoryList', status.name)
+        this.$store.dispatch('gui/toggleStatusInHistoryList', status.name)
     }
 
     exportHistory() {
@@ -710,6 +704,32 @@ export default class HistoryListPanel extends Mixins(BaseMixin, HistoryMixin) {
                         return value
                 }
         }
+    }
+
+    get deleteSelectedQuestion(): string {
+        if (this.selectedJobsTable.length === 1) return this.$t('History.DeleteSingleJobQuestion').toString()
+
+        return this.$t('History.DeleteSelectedQuestion', { count: this.selectedJobsTable.length }).toString()
+    }
+
+    deleteSelectedJobs() {
+        this.selectedJobsTable.forEach((item: HistoryListPanelRow) => {
+            if (item.type === 'maintenance') {
+                this.$store.dispatch('gui/maintenance/delete', item.id)
+                return
+            }
+
+            // break if job_id is not present
+            if (!('job_id' in item)) return
+
+            this.$socket.emit(
+                'server.history.delete_job',
+                { uid: item.job_id },
+                { action: 'server/history/getDeletedJobs' }
+            )
+        })
+
+        this.selectedJobsTable = []
     }
 }
 </script>

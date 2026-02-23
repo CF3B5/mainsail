@@ -1,5 +1,5 @@
 <template>
-    <div v-if="current_filename" class="statusPanel-printstatus-thumbnail">
+    <div v-if="current_filename" ref="wrapper" class="statusPanel-printstatus-thumbnail">
         <v-img
             v-if="boolBigThumbnail"
             ref="bigThumbnail"
@@ -76,17 +76,18 @@
                 </v-row>
             </v-container>
         </template>
-        <resize-observer @notify="handleResize" />
     </div>
 </template>
 
 <script lang="ts">
 import Component from 'vue-class-component'
-import { Mixins } from 'vue-property-decorator'
+import { Mixins, Ref, Watch } from 'vue-property-decorator'
 import BaseMixin from '@/components/mixins/base'
 import { defaultBigThumbnailBackground, thumbnailBigMin, thumbnailSmallMax, thumbnailSmallMin } from '@/store/variables'
 import { mdiFileOutline, mdiFile } from '@mdi/js'
 import { Debounce } from 'vue-debounce-decorator'
+import { escapePath } from '@/plugins/helpers'
+import Vue from 'vue'
 
 @Component({})
 export default class StatusPanelPrintstatusThumbnail extends Mixins(BaseMixin) {
@@ -95,10 +96,10 @@ export default class StatusPanelPrintstatusThumbnail extends Mixins(BaseMixin) {
 
     focus = false
     thumbnailFactor = 0
+    resizeObserver: ResizeObserver | null = null
 
-    declare $refs: {
-        bigThumbnail: any
-    }
+    @Ref() readonly wrapper!: HTMLDivElement
+    @Ref() readonly bigThumbnail!: Vue
 
     get current_filename() {
         return this.$store.state.printer.print_stats?.filename ?? ''
@@ -119,7 +120,7 @@ export default class StatusPanelPrintstatusThumbnail extends Mixins(BaseMixin) {
                 }
 
                 if (thumbnail && 'relative_path' in thumbnail) {
-                    return `${this.apiUrl}/server/files/gcodes/${encodeURI(
+                    return `${this.apiUrl}/server/files/gcodes/${escapePath(
                         relative_url + thumbnail.relative_path
                     )}?timestamp=${this.current_file.modified}`
                 }
@@ -170,7 +171,7 @@ export default class StatusPanelPrintstatusThumbnail extends Mixins(BaseMixin) {
                 }
 
                 if (thumbnail && 'relative_path' in thumbnail) {
-                    return `${this.apiUrl}/server/files/gcodes/${encodeURI(
+                    return `${this.apiUrl}/server/files/gcodes/${escapePath(
                         relative_url + thumbnail.relative_path
                     )}?timestamp=${this.current_file.modified}`
                 }
@@ -233,11 +234,28 @@ export default class StatusPanelPrintstatusThumbnail extends Mixins(BaseMixin) {
         return this.$store.state.gui.uiSettings.printstatusThumbnailZoom ?? true
     }
 
+    mounted() {
+        this.setupResizeObserver()
+    }
+
+    beforeDestroy() {
+        this.resizeObserver?.disconnect()
+    }
+
     calcThumbnailFactor() {
-        const thumbnailClientWidth = this.$refs.bigThumbnail?.$el.clientWidth ?? 0
+        const thumbnailClientWidth = this.bigThumbnail?.$el.clientWidth ?? 0
         if (!thumbnailClientWidth || !this.thumbnailBigWidth) this.thumbnailFactor = 0
 
         return (this.thumbnailFactor = thumbnailClientWidth / this.thumbnailBigWidth)
+    }
+
+    setupResizeObserver() {
+        this.resizeObserver?.disconnect()
+
+        if (!this.wrapper) return
+
+        this.resizeObserver = new ResizeObserver(() => this.handleResize())
+        this.resizeObserver.observe(this.wrapper)
     }
 
     @Debounce(200)
@@ -245,6 +263,11 @@ export default class StatusPanelPrintstatusThumbnail extends Mixins(BaseMixin) {
         this.$nextTick(() => {
             this.calcThumbnailFactor()
         })
+    }
+
+    @Watch('current_filename')
+    onCurrentFilenameChanged() {
+        this.$nextTick(() => this.calcThumbnailFactor())
     }
 }
 </script>

@@ -1,4 +1,4 @@
-import { Theme } from '@/store/types'
+import { KlipperRepos, Theme } from '@/store/types'
 
 export const defaultMode = 'dark'
 export const defaultTheme = 'mainsail'
@@ -20,7 +20,17 @@ export const themeDir = '.theme'
 export const datasetInterval = 1000
 export const datasetTypes = ['temperature', 'target', 'power', 'speed']
 export const datasetTypesInPercents = ['power', 'speed']
-export const additionalSensors = ['bme280', 'aht10', 'htu21d']
+export const additionalSensors = [
+    'aht10',
+    'aht1x',
+    'aht2x',
+    'aht3x',
+    'bme280',
+    'htu21d',
+    'sgp40',
+    'sht3x',
+    'temperature_combined',
+]
 
 /*
  * List of valid gcode file extensions
@@ -58,10 +68,20 @@ export const checkKlipperConfigModules = [
 export const allowedMetadata = [
     'uuid',
     'estimated_time',
+    'extruder_colors',
+    'filament_change_count',
+    'filament_colors',
     'filament_name',
+    'filament_temps',
     'filament_type',
+    'filament_colors',
+    'extruder_colors',
+    'filament_temps',
+    'referenced_tools',
+    'mmu_print',
     'filament_total',
     'filament_weight_total',
+    'filament_weights',
     'nozzle_diameter',
     'first_layer_bed_temp',
     'first_layer_extr_temp',
@@ -71,8 +91,10 @@ export const allowedMetadata = [
     'gcode_start_byte',
     'job_id',
     'layer_height',
+    'mmu_print',
     'object_height',
     'print_start_time',
+    'referenced_tools',
     'size',
     'slicer',
     'slicer_version',
@@ -86,13 +108,16 @@ export const maxGcodeHistory = 50
  * List of generic dashboard panels
  */
 export const allDashboardPanels = [
+    'afc',
     'toolhead-control',
     'extruder-control',
     'macros',
+    'led-effects',
     'machine-settings',
     'miniconsole',
     'miscellaneous',
     'spoolman',
+    'mmu',
     'temperature',
     'webcam',
 ]
@@ -129,12 +154,6 @@ export const hiddenRootDirectories = ['gcodes', 'timelapse', 'timelapse_frames']
 export const hiddenDirectories = ['.git']
 
 /*
- * List of available Klipper config reference translations
- * https://www.klipper3d.org/Config_Reference.html
- */
-export const availableKlipperConfigReferenceTranslations = ['it', 'hu', 'zh']
-
-/*
  * List of all downloadable logfiles
  */
 export const genericLogfiles = ['klippy', 'moonraker', 'crowsnest', 'mmu', 'sonar']
@@ -143,6 +162,23 @@ export const genericLogfiles = ['klippy', 'moonraker', 'crowsnest', 'mmu', 'sona
  * List of all rollover logfiles
  */
 export const rolloverLogfiles = ['klipper', 'moonraker']
+
+/*
+ * List of keys that should not be saved to Moonraker DB
+ * and are excluded when backup/restore settings
+ */
+export const excludeKeys = [
+    'view.timelapse.currentPath',
+    'view.timelapse.selectedFiles',
+    'view.history.selectedJobs',
+    'view.blockFileUpload',
+    'view.configfiles.selectedFiles',
+    'view.configfiles.rootPath',
+    'view.configfiles.currentPath',
+    'view.gcodefiles.search',
+    'view.gcodefiles.currentPath',
+    'view.gcodefiles.selectedFiles',
+]
 
 /*
  * List of all Themes
@@ -181,6 +217,7 @@ export const themes: Theme[] = [
         colorLogo: '#FF0000',
         logo: { show: true, light: false },
         sidebarBackground: { show: true, light: false },
+        css: true,
     },
     {
         name: 'prusa',
@@ -203,3 +240,16 @@ export const themes: Theme[] = [
         logo: { show: true, light: false },
     },
 ]
+
+/*
+ * List of all supported Klipper-Repos
+ */
+export const klipperRepos: KlipperRepos = {
+    Klipper: {
+        url: 'https://www.klipper3d.org/',
+        docsLanguages: ['it', 'hu', 'zh'],
+    },
+    Kalico: {
+        url: 'https://docs.kalico.gg/',
+    },
+}

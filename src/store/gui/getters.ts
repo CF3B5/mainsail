@@ -42,7 +42,7 @@ export const getters: GetterTree<GuiState, any> = {
 
     getPanelExpand: (state) => (name: string, viewport: string) => {
         if ('dashboard' in state && viewport in state.dashboard.nonExpandPanels) {
-            return !state.dashboard.nonExpandPanels[viewport].includes(name) ?? true
+            return !state.dashboard.nonExpandPanels[viewport].includes(name)
         }
 
         return true
@@ -89,6 +89,25 @@ export const getters: GetterTree<GuiState, any> = {
         // remove spoolman panel, if no spoolman component exists in moonraker
         if (!rootState.server.components.includes('spoolman')) {
             allPanels = allPanels.filter((name) => name !== 'spoolman')
+        }
+
+        // remove afc panel, if no AFC module exists in Klipper
+        if (!rootState.printer?.AFC) {
+            allPanels = allPanels.filter((name) => name !== 'afc')
+        }
+
+        // remove mmu panel, if no Happy Hare exists in Klipper
+        if (!rootState.printer?.mmu) {
+            allPanels = allPanels.filter((name) => name !== 'mmu')
+        }
+
+        // remove led_effects panel, if no led_effect object exists in Klipper
+        const ledEffectsPrefix = 'led_effect '
+        const existsLedEffects = Object.keys(rootState.printer ?? {}).some((name) =>
+            name.toLowerCase().startsWith(ledEffectsPrefix)
+        )
+        if (!existsLedEffects) {
+            allPanels = allPanels.filter((name) => name !== 'led-effects')
         }
 
         return allPanels

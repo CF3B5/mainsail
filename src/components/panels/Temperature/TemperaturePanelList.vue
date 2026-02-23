@@ -25,9 +25,12 @@
                         v-for="objectName in heaterObjects"
                         :key="objectName"
                         :object-name="objectName"
+                        :input-digits="inputFieldDigits"
                         :is-responsive-mobile="el.is.mobile ?? false" />
                     <temperature-panel-list-item-nevermore
-                        v-if="existsNevermoreFilter"
+                        v-for="objectName in nevermoreObjects"
+                        :key="objectName"
+                        :object-name="objectName"
                         :is-responsive-mobile="el.is.mobile ?? false" />
                     <temperature-panel-list-item
                         v-for="objectName in temperature_sensors"
@@ -62,15 +65,7 @@ export default class TemperaturePanelList extends Mixins(BaseMixin) {
     }
 
     get filteredHeaters() {
-        return this.available_heaters
-            .filter((fullName: string) => {
-                const splits = fullName.split(' ')
-                let name = splits[0]
-                if (splits.length > 1) name = splits[1]
-
-                return !name.startsWith('_')
-            })
-            .sort(this.sortObjectName)
+        return this.filterNamesAndSort(this.available_heaters)
     }
 
     get available_sensors() {
@@ -79,6 +74,10 @@ export default class TemperaturePanelList extends Mixins(BaseMixin) {
 
     get available_monitors() {
         return this.$store.state.printer?.heaters?.available_monitors ?? []
+    }
+
+    get available_nevermores() {
+        return Object.keys(this.$store.state.printer).filter((name) => name.startsWith('nevermore'))
     }
 
     get monitors() {
@@ -91,10 +90,6 @@ export default class TemperaturePanelList extends Mixins(BaseMixin) {
             .sort(this.sortObjectName)
     }
 
-    get existsNevermoreFilter() {
-        return 'nevermore' in this.$store.state.printer
-    }
-
     get hideMcuHostSensors(): boolean {
         return this.$store.state.gui.view.tempchart.hideMcuHostSensors ?? false
     }
@@ -104,29 +99,43 @@ export default class TemperaturePanelList extends Mixins(BaseMixin) {
     }
 
     get temperature_sensors() {
-        return this.available_sensors
-            .filter((fullName: string) => {
-                if (this.available_heaters.includes(fullName)) return false
-                if (this.temperature_fans.includes(fullName)) return false
+        return this.filterNamesAndSort(this.available_sensors).filter((fullName: string) => {
+            if (this.available_heaters.includes(fullName)) return false
+            if (this.temperature_fans.includes(fullName)) return false
 
-                // hide MCU & Host sensors, if the function is enabled
-                if (this.hideMcuHostSensors && this.checkMcuHostSensor(fullName)) return false
+            // hide MCU & Host sensors, if the function is enabled
+            if (this.hideMcuHostSensors && this.checkMcuHostSensor(fullName)) return false
 
-                const splits = fullName.split(' ')
-                let name = splits[0]
-                if (splits.length > 1) name = splits[1]
-
-                return !name.startsWith('_')
-            })
-            .sort(this.sortObjectName)
+            return true
+        })
     }
 
     get heaterObjects() {
         return [...this.filteredHeaters, ...this.temperature_fans]
     }
 
+    get nevermoreObjects() {
+        return this.filterNamesAndSort(this.available_nevermores)
+    }
+
     get settings() {
         return this.$store.state.printer?.configfile?.settings ?? {}
+    }
+
+    get maxTemperatureSetting() {
+        return this.heaterObjects.reduce((maxTemp, heaterObject) => {
+            const settingObject = this.settings[heaterObject.toLowerCase()] ?? {}
+            const maxTempSetting = Number(settingObject.max_temp ?? 0)
+
+            return Math.max(maxTemp, maxTempSetting)
+        }, 0)
+    }
+
+    get inputFieldDigits() {
+        const MIN_INPUT_DIGITS = 3
+        const digits = this.maxTemperatureSetting.toString().length
+
+        return Math.max(MIN_INPUT_DIGITS, digits)
     }
 
     checkMcuHostSensor(fullName: string) {
@@ -136,21 +145,27 @@ export default class TemperaturePanelList extends Mixins(BaseMixin) {
         return ['temperature_mcu', 'temperature_host'].includes(sensor_type)
     }
 
-    sortObjectName(a: string, b: string) {
-        const splitsA = a.split(' ')
-        let nameA = splitsA[0]
-        if (splitsA.length > 1) nameA = splitsA[1]
-        nameA = nameA.toUpperCase()
+    filterNamesAndSort(fullNames: string[]) {
+        return fullNames.filter(this.isVisibleName).sort(this.sortObjectName)
+    }
 
-        const splitsB = b.split(' ')
-        let nameB = splitsB[0]
-        if (splitsB.length > 1) nameB = splitsB[1]
-        nameB = nameB.toUpperCase()
+    isVisibleName(fullName: string) {
+        return !this.shortName(fullName).startsWith('_')
+    }
+
+    sortObjectName(a: string, b: string) {
+        const nameA = this.shortName(a).toUpperCase()
+        const nameB = this.shortName(b).toUpperCase()
 
         if (nameA < nameB) return -1
         if (nameA > nameB) return 1
 
         return 0
+    }
+
+    shortName(fullName: string) {
+        const splits = fullName.split(' ')
+        return splits.length == 1 ? splits[0] : splits[1]
     }
 }
 </script>
@@ -184,6 +199,7 @@ export default class TemperaturePanelList extends Mixins(BaseMixin) {
 }
 
 .temperature-panel-table ::v-deep .target {
-    width: 140px;
+    width: 1px;
+    white-space: nowrap;
 }
 </style>

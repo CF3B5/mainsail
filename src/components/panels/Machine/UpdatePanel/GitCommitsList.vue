@@ -1,5 +1,5 @@
 <template>
-    <v-dialog v-model="boolShowDialog" persistent :max-width="800" :fullscreen="isMobile">
+    <v-dialog v-model="showDialog" persistent :max-width="800" :fullscreen="isMobile">
         <panel
             :title="$t('Machine.UpdatePanel.Commits')"
             :icon="mdiUpdate"
@@ -43,7 +43,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
+import { Component, Mixins, Prop, VModel } from 'vue-property-decorator'
 import BaseMixin from '@/components/mixins/base'
 import {
     ServerUpdateManagerStateGitRepo,
@@ -61,7 +61,7 @@ export default class GitCommitsList extends Mixins(BaseMixin) {
     mdiUpdate = mdiUpdate
     mdiCloseThick = mdiCloseThick
 
-    @Prop({ required: true }) readonly boolShowDialog!: boolean
+    @VModel({ type: Boolean }) showDialog!: boolean
     @Prop({ required: true }) readonly repo!: ServerUpdateManagerStateGitRepo | null
 
     get commitsBehind(): ServerUpdateManagerStateGitRepoCommit[] {
@@ -103,7 +103,7 @@ export default class GitCommitsList extends Mixins(BaseMixin) {
     }
 
     get linkToGithub() {
-        return `https://github.com/${this.repo?.owner}/${this.repo?.name}/commits/${this.repo?.branch}/?after=${this.lastCommit?.sha}+0`
+        return `https://github.com/${this.repo?.owner}/${this.repo?.repo_name}/commits/${this.repo?.branch}/?after=${this.lastCommit?.sha}+0`
     }
 
     get overlayScrollbarsStyle() {
@@ -125,7 +125,7 @@ export default class GitCommitsList extends Mixins(BaseMixin) {
     }
 
     closeDialog() {
-        this.$emit('close-dialog')
+        this.showDialog = false
     }
 }
 </script>

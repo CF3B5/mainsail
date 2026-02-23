@@ -31,13 +31,7 @@
                         <v-icon small class="mr-1">{{ mdiHelp }}</v-icon>
                         {{ $t('Editor.ConfigReference') }}
                     </v-btn>
-                    <v-btn
-                        v-if="configFileStructure"
-                        text
-                        tile
-                        target="_blank"
-                        class="d-none d-md-flex"
-                        @click="showFileStructure()">
+                    <v-btn v-if="existsFileStructure" text tile class="d-none d-md-flex" @click="toggleFileStructure">
                         <v-icon small class="mr-1">{{ mdiFormatListCheckbox }}</v-icon>
                         {{ $t('Editor.FileStructure') }}
                     </v-btn>
@@ -58,52 +52,52 @@
                         <v-icon>{{ mdiCloseThick }}</v-icon>
                     </v-btn>
                 </template>
-                <v-card-text class="pa-0">
-                    <div
-                        v-if="fileStructureSidebar"
-                        class="d-none d-md-flex float-right structure-sidebar cm-editor ͼo">
-                        <div class="cm-scroller" style="width: 100%">
-                            <v-treeview
-                                activatable
-                                open-on-click
-                                dense
-                                dark
-                                :active="structureActive"
-                                :open="structureOpen"
-                                item-key="line"
-                                :items="configFileStructure"
-                                @update:active="activeChanges">
-                                <template #label="{ item }">
-                                    <div :class="item.type == 'item' ? 'ͼp' : 'ͼt'">{{ item.name }}</div>
-                                </template>
-                                <template v-if="restartServiceName === 'klipper'" #append="{ item }">
-                                    <v-btn
-                                        v-if="item.type == 'section'"
-                                        icon
-                                        small
-                                        plain
-                                        color="grey darken-2"
-                                        :href="klipperConfigReference + '#' + item.name.split(' ')[0]"
-                                        target="_blank">
-                                        <v-icon small class="mr-1">{{ mdiHelpCircle }}</v-icon>
-                                    </v-btn>
-                                </template>
-                            </v-treeview>
-                        </div>
-                    </div>
-                    <div :class="fileStructureSidebar ? 'structure' : ''">
-                        <codemirror-async
-                            v-if="show"
-                            ref="editor"
-                            v-model="sourcecode"
-                            :name="filename"
-                            :file-extension="fileExtension"
-                            @lineChange="lineChanges" />
+                <v-card-text class="pa-0 d-flex">
+                    <codemirror-async
+                        v-if="show"
+                        ref="editor"
+                        v-model="sourcecode"
+                        :name="filename"
+                        :file-extension="fileExtension"
+                        class="codemirror"
+                        :class="{ withSidebar: existsFileStructure && fileStructureSidebar }"
+                        @lineChange="lineChanges" />
+                    <div v-if="existsFileStructure && fileStructureSidebar" class="d-none d-md-flex structure-sidebar">
+                        <v-treeview
+                            activatable
+                            dense
+                            :active="structureActive"
+                            :open="structureOpen"
+                            :item-key="treeviewItemKeyProp"
+                            :items="configFileStructure"
+                            class="w-100"
+                            @update:active="activeChanges">
+                            <template #label="{ item }">
+                                <div
+                                    class="cursor-pointer _structure-sidebar-item"
+                                    :class="item.type == 'item' ? 'ͼp' : 'ͼt'"
+                                    @click="activeChangesItemClick">
+                                    {{ item.name }}
+                                </div>
+                            </template>
+                            <template v-if="restartServiceName === 'klipper'" #append="{ item }">
+                                <v-btn
+                                    v-if="item.type == 'section'"
+                                    icon
+                                    small
+                                    plain
+                                    color="grey darken-2"
+                                    :href="klipperConfigReference + '#' + item.name.split(' ')[0]"
+                                    target="_blank">
+                                    <v-icon small class="mr-1">{{ mdiHelpCircle }}</v-icon>
+                                </v-btn>
+                            </template>
+                        </v-treeview>
                     </div>
                 </v-card-text>
             </panel>
         </v-dialog>
-        <v-snackbar v-model="loaderBool" :timeout="-1" :value="true" fixed right bottom>
+        <v-snackbar v-model="loaderBool" :timeout="-1" fixed right bottom>
             <div>
                 {{ snackbarHeadline }}
                 <br />
@@ -163,16 +157,16 @@
                 </v-card-actions>
             </panel>
         </v-dialog>
-        <devices-dialog :show-dialog="dialogDevices" @close="dialogDevices = false" />
+        <devices-dialog v-model="dialogDevices" />
     </div>
 </template>
 
 <script lang="ts">
-import { Component, Mixins, Watch } from 'vue-property-decorator'
+import { Component, Mixins, Ref, Watch } from 'vue-property-decorator'
 import BaseMixin from '@/components/mixins/base'
 import { capitalize, formatFilesize, windowBeforeUnloadFunction } from '@/plugins/helpers'
 import Panel from '@/components/ui/Panel.vue'
-import { availableKlipperConfigReferenceTranslations } from '@/store/variables'
+import { klipperRepos } from '@/store/variables'
 import CodemirrorAsync from '@/components/inputs/CodemirrorAsync'
 import {
     mdiClose,
@@ -186,7 +180,6 @@ import {
     mdiUsb,
     mdiFormatListCheckbox,
 } from '@mdi/js'
-import type Codemirror from '@/components/inputs/Codemirror.vue'
 import DevicesDialog from '@/components/dialogs/DevicesDialog.vue'
 import { ConfigFileSection } from '@/store/files/types'
 
@@ -196,9 +189,10 @@ import { ConfigFileSection } from '@/store/files/types'
 export default class TheEditor extends Mixins(BaseMixin) {
     dialogConfirmChange = false
     dialogDevices = false
-    fileStructureSidebar = true
+    treeviewItemKeyProp = 'line' as const
     structureActive: number[] = []
     structureOpen: number[] = []
+    structureActiveChangedBySidebar: boolean = false
 
     formatFilesize = formatFilesize
 
@@ -216,9 +210,8 @@ export default class TheEditor extends Mixins(BaseMixin) {
     mdiUsb = mdiUsb
     mdiFormatListCheckbox = mdiFormatListCheckbox
 
-    declare $refs: {
-        editor: Codemirror
-    }
+    //@ts-ignore
+    @Ref('editor') editor!: CodemirrorAsync
 
     get changed() {
         return this.$store.state.editor.changed ?? false
@@ -291,10 +284,14 @@ export default class TheEditor extends Mixins(BaseMixin) {
         return this.$store.state.server.system_info?.available_services ?? []
     }
 
-    get restartServiceName() {
+    get restartAllowedOrPossible() {
         if (!this.isWriteable) return null
         if (['printing', 'paused'].includes(this.printer_state)) return null
 
+        return true
+    }
+
+    get restartServiceName() {
         // check for generic services <service>.conf (like moonraker.conf, crowsnest.conf, sonar.conf)
         if (this.availableServices.includes(this.filenameWithoutExtension) && this.fileExtension === 'conf')
             return this.filenameWithoutExtension
@@ -315,6 +312,8 @@ export default class TheEditor extends Mixins(BaseMixin) {
     }
 
     get restartServiceNameExists() {
+        if (!this.restartAllowedOrPossible) return false
+
         // hide the button, if there is no service found
         if (this.restartServiceName === null) return false
 
@@ -346,52 +345,70 @@ export default class TheEditor extends Mixins(BaseMixin) {
 
     get klipperConfigReference(): string {
         const currentLanguage = this.currentLanguage
-        const translations = availableKlipperConfigReferenceTranslations
-        let url = 'https://www.klipper3d.org/Config_Reference.html'
+        const klipperRepo = klipperRepos[this.klipperAppName] ?? klipperRepos.Klipper
 
-        if (translations.includes(currentLanguage)) {
-            url = `https://www.klipper3d.org/${currentLanguage}/Config_Reference.html`
+        let url = klipperRepo.url
+        if (klipperRepo.docsLanguages?.includes(currentLanguage)) {
+            url += `${currentLanguage}/`
         }
+
+        url += 'Config_Reference.html'
 
         return url
     }
 
-    get configFileStructure() {
-        if (['conf', 'cfg'].includes(this.fileExtension)) {
-            const sourcecode = this.sourcecode
-            const lines = sourcecode.split(/\n/gi)
-            const regex = /^[^#\S]*?(\[(?<section>.*?)]|(?<name>\w+)\s*?[:=])/gim
-            let section = null
-            let name = null
-            let structure: ConfigFileSection[] = []
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i]
-                const matches = [...line.matchAll(regex)]
-                if (matches.length > 0) {
-                    const match = matches[0]
-                    if (match['groups']['section']) {
-                        section = match['groups']['section']
-                        structure.push({
-                            name: section,
-                            type: 'section',
-                            line: i + 1,
-                            children: [],
-                        })
-                    } else if (match['groups']['name']) {
-                        name = match['groups']['name']
-                        structure[structure.length - 1]['children'].push({
-                            name: name,
-                            type: 'item',
-                            line: i + 1,
-                        })
-                    }
-                }
+    get fileStructureSidebar() {
+        return this.$store.state.gui.editor.fileStructureSidebar
+    }
+
+    set fileStructureSidebar(newVal) {
+        this.$store.dispatch('gui/saveSetting', { name: 'editor.fileStructureSidebar', value: newVal })
+    }
+
+    get configFileStructure(): ConfigFileSection[] {
+        if (!['conf', 'cfg'].includes(this.fileExtension)) return []
+
+        const lines = this.sourcecode.split(/\n/gi)
+        const regex = /^[^#\S]*?(\[(?<section>.*?)]|(?<name>\w+)\s*?[:=])/gim
+        const structure: ConfigFileSection[] = []
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i]
+            const matches = [...line.matchAll(regex)]
+
+            // break if no matches were found
+            if (matches.length === 0) continue
+
+            const match = matches[0]
+            if (match['groups']['section']) {
+                structure.push({
+                    name: match['groups']['section'],
+                    type: 'section',
+                    line: i + 1,
+                    children: [],
+                })
+
+                continue
             }
-            this.fileStructureSidebar = true
-            return structure
+
+            if (structure.length && match['groups']['name']) {
+                structure[structure.length - 1]['children'].push({
+                    name: match['groups']['name'],
+                    type: 'item',
+                    line: i + 1,
+                })
+            }
         }
-        this.fileStructureSidebar = false
-        return null
+
+        return structure
+    }
+
+    get existsFileStructure() {
+        return this.configFileStructure.length > 0
+    }
+
+    toggleFileStructure() {
+        this.fileStructureSidebar = !this.fileStructureSidebar
     }
 
     cancelDownload() {
@@ -426,12 +443,23 @@ export default class TheEditor extends Mixins(BaseMixin) {
         })
     }
 
-    showFileStructure() {
-        this.fileStructureSidebar = !this.fileStructureSidebar
+    // Relies on event bubbling to flip the flag before treeview active change is handled
+    activeChangesItemClick() {
+        this.structureActiveChangedBySidebar = true
     }
 
-    activeChanges(key: any) {
-        this.$refs.editor.gotoLine(key)
+    activeChanges(activeItems: Array<ConfigFileSection[typeof this.treeviewItemKeyProp]>) {
+        if (!this.structureActiveChangedBySidebar) {
+            return
+        }
+
+        this.structureActiveChangedBySidebar = false
+
+        if (!activeItems.length) {
+            return
+        }
+
+        this.editor?.gotoLine(activeItems[0])
     }
 
     lineChanges(line: number) {
@@ -512,12 +540,26 @@ export default class TheEditor extends Mixins(BaseMixin) {
 }
 
 @media screen and (min-width: 960px) {
-    .structure {
-        margin-right: 300px;
+    .codemirror:not(.withSidebar) {
+        width: 100%;
     }
-    .structure-sidebar {
-        width: 300px;
-        overflow-y: auto;
+    .codemirror.withSidebar {
+        width: calc(100% - 300px);
     }
+}
+
+.structure-sidebar {
+    width: 300px;
+    overflow-y: auto;
+    max-height: calc(100vh - 48px);
+}
+._structure-sidebar-item {
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+::v-deep .v-treeview-node__level + .v-treeview-node__level {
+    width: 12px;
 }
 </style>
