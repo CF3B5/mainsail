@@ -1135,6 +1135,9 @@
         "YouCanFindMore": "你可以从这里查看更多信息："
     },
     "Settings": {
+        "AliasTab": {
+            "AliasName": "别名"
+        },
         "ConsoleTab": {
             "AddFilter": "添加过滤器",
             "Console": "控制台",
@@ -1300,6 +1303,7 @@
             "General": "常规设置",
             "Group": "分组",
             "GroupMacros": "宏分组",
+            "MacroAliasName": "宏别名",
             "Macrogroups": "分组",
             "Macros": "宏",
             "Management": "管理",
